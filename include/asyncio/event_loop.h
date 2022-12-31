@@ -1,8 +1,11 @@
 #pragma once
 
 #include <asyncio/handle.h>
-#include <asyncio/selector.h>
 #include <asyncio/utils/non_copyable.h>
+
+#ifndef NO_IO
+#include <asyncio/selector.h>
+#endif
 
 // std
 #include <algorithm>
@@ -63,15 +66,7 @@ class EventLoop : private NonCopyable {
       timeout = std::max(when - time(), MSDuration(0));
     }
 
-    // Wait for some selector event with specified timeout.
-    // If no ready or scheduled task, wait infinitely until one event is
-    // delivered. If timeout is 0, epoll_wait() with return immediately.
-    auto event_list =
-        selector_.select(timeout.has_value() ? (int)timeout->count() : -1);
-    for (auto&& event : event_list) {
-      // send selector event into ready queue.
-      ready_q_.push(event.handle_info);
-    }
+    check_io_ready(timeout);
 
     auto end_time = time();
     // Some scheduled task can wake up when epoll_wait() blocks.
@@ -92,7 +87,6 @@ class EventLoop : private NonCopyable {
           iter != cancelled_set_.end()) {
         // If handle_id is a cancelled task. Don't run this task and remove it
         // from cancelled task.
-        // TODO: why cancel here?
         cancelled_set_.erase(iter);
       } else {
         // TODO: When running, the state may be changed. So unschedule it first?
@@ -117,8 +111,26 @@ class EventLoop : private NonCopyable {
     }
   }
 
+  void check_io_ready(std::optional<MSDuration> timeout) {
+#ifndef NO_IO
+    // Wait for some selector event with specified timeout.
+    // If no ready or scheduled task, wait infinitely until one event is
+    // delivered. If timeout is 0, epoll_wait() with return immediately.
+    auto event_list =
+        selector_.select(timeout.has_value() ? (int)timeout->count() : -1);
+    for (auto&& event : event_list) {
+      // send selector event into ready queue.
+      ready_q_.push(event.handle_info);
+    }
+#endif
+  }
+
   bool is_stop() {
-    return schedule_pq_.empty() && ready_q_.empty() && selector_.is_stop();
+    bool is_selector_empty = true;
+#ifndef NO_IO
+    is_selector_empty = selector_.is_stop();
+#endif
+    return schedule_pq_.empty() && ready_q_.empty() && is_selector_empty;
   }
 
   MSDuration time() {
@@ -140,10 +152,12 @@ class EventLoop : private NonCopyable {
 
  private:
   MSDuration start_time_{};
-  Selector selector_;
   std::queue<HandleInfo> ready_q_;
   std::vector<TimerHandle> schedule_pq_;  // priority_queue
   std::unordered_set<HandleId> cancelled_set_;
+#ifndef NO_IO
+  Selector selector_;
+#endif
 };
 
 EventLoop& get_event_loop();

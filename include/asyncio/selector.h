@@ -33,7 +33,20 @@ class Selector {
 
   std::vector<Event> select(int timeout_ms) const {
     errno = 0;
+
+    /// typedef union epoll_data {
+    ///   void    *ptr;
+    ///   int      fd;
+    ///   uint32_t u32;
+    ///   uint64_t u64;
+    /// } epoll_data_t;
+    ///
+    /// struct epoll_event {
+    ///   uint32_t     events;    /* Epoll events */
+    ///   epoll_data_t data;      /* User data variable */
+    /// };
     std::vector<epoll_event> events(register_event_count_);
+
     /// epoll_wait(2) waits for I/O events, blocking the calling thread if no
     /// events are currently available.  (This system call can be thought of as
     /// fetching items from the ready list of the epoll instance.)

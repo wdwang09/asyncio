@@ -56,7 +56,6 @@ class CoHandleManager : public HandleIdAndState {
 };
 
 struct HandleInfo {
-  // TODO: Why store id outside?
   HandleId id;
   HandleIdAndState* handle;
 };

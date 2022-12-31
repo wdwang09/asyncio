@@ -15,6 +15,11 @@ add_subdirectory(third_party/fmt)
 add_library(asyncio include/asyncio/asyncio.h src/handle.cpp)
 target_include_directories(asyncio PUBLIC include)
 target_link_libraries(asyncio PUBLIC fmt::fmt)
+if (NOT (UNIX AND NOT APPLE))  # NOT LINUX
+    # If cmake version is high, use LINUX directly. (https://cmake.org/cmake/help/latest/variable/LINUX.html)
+    MESSAGE(WARNING "IO is disabled.")
+    target_compile_definitions(asyncio PUBLIC NO_IO)
+endif ()
 
 add_executable(main main.cpp)
 target_link_libraries(main PUBLIC asyncio)
