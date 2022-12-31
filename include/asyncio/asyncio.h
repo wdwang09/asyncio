@@ -2,9 +2,11 @@
 
 #include <asyncio/event_loop.h>
 #include <asyncio/scheduled_task.h>
+#include <asyncio/sleep.h>
 #include <asyncio/task.h>
 #include <asyncio/utils/dump_callstack.h>
 #include <asyncio/utils/future.h>
+#include <asyncio/wait_for.h>
 
 // std
 #include <type_traits>

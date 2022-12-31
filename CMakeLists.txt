@@ -12,7 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(third_party/fmt)
 
-add_library(asyncio src/handle.cpp)
+add_library(asyncio include/asyncio/asyncio.h src/handle.cpp)
 target_include_directories(asyncio PUBLIC include)
 target_link_libraries(asyncio PUBLIC fmt::fmt)
 

@@ -8,11 +8,11 @@
 
 namespace asyncio {
 
-// TODO: why not use Task directly?
+// TODO: Why not use Task directly? Show less code?
 template <concepts::Future Task>
 struct ScheduledTask : private NonCopyable {
-  template <concepts::Future Fut>
-  explicit ScheduledTask(Fut&& task) : task_(std::forward<Fut>(task)) {
+  // template <concepts::Future Fut>  // Compilation Error in Clang 15.0.6
+  explicit ScheduledTask(Task&& task) : task_(std::forward<Task>(task)) {
     // In member initializer list, save task_ to avoid the lifecycle problem.
     if (task_.valid() && !task_.done()) {
       // from UNSCHEDULED to SCHEDULED, send into ready queue

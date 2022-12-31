@@ -164,6 +164,7 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
   auto final_suspend() noexcept { return FinalAwaiter{}; }
 
   // Using this function to save std::source_location. No other usage.
+  // GCC (12.2.1) and Clang (15.0.6) show different behaviors in "loc".
   template <concepts::Awaitable A>
   decltype(auto) await_transform(
       A&& awaiter, std::source_location loc = std::source_location::current()) {
