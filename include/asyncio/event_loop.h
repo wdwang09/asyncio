@@ -27,22 +27,23 @@ class EventLoop : private NonCopyable {
   }
 
   // Don't cancel handle immediately.
-  void cancel_handle(Handle& handle) {
-    handle.set_state(Handle::State::UNSCHEDULED);
-    cancelled_.insert(handle.get_handle_id());
+  void cancel_handle(HandleIdAndState& handle) {
+    handle.set_state(HandleIdAndState::State::UNSCHEDULED);
+    cancelled_set_.insert(handle.get_handle_id());
   }
 
-  void call_soon(Handle& handle) {
-    handle.set_state(Handle::State::SCHEDULED);
-    ready_.push(HandleInfo{handle.get_handle_id(), &handle});
+  void call_soon(HandleIdAndState& handle) {
+    handle.set_state(HandleIdAndState::State::SCHEDULED);
+    ready_q_.push(HandleInfo{handle.get_handle_id(), &handle});
   }
 
   template <typename Rep, typename Period>
-  void call_later(std::chrono::duration<Rep, Period> delay, Handle& callback) {
+  void call_later(std::chrono::duration<Rep, Period> delay,
+                  HandleIdAndState& callback) {
     call_at(time() + std::chrono::duration_cast<MSDuration>(delay), callback);
   }
 
-  void run_until_complete(const Event& event) {
+  void run_until_complete() {
     while (!is_stop()) {
       run_once();
     }
@@ -53,62 +54,63 @@ class EventLoop : private NonCopyable {
     // deal with ready, scheduled and epoll task
 
     std::optional<MSDuration> timeout;  // As the epoll_wait() argument.
-    if (!ready_.empty()) {
+    if (!ready_q_.empty()) {
       // If some task are ready
       timeout.emplace(0);
-    } else if (!schedule_.empty()) {
-      // No task is ready, but some task are scheduled.
-      auto&& [when, _] = schedule_[0];
+    } else if (!schedule_pq_.empty()) {
+      // No task is ready, but some task are slept.
+      auto&& [when, _] = schedule_pq_[0];
       timeout = std::max(when - time(), MSDuration(0));
     }
 
+    // Wait for some selector event with specified timeout.
     // If no ready or scheduled task, wait infinitely until one event is
     // delivered. If timeout is 0, epoll_wait() with return immediately.
     auto event_list =
         selector_.select(timeout.has_value() ? (int)timeout->count() : -1);
     for (auto&& event : event_list) {
-      ready_.push(event.handle_info);
+      // send selector event into ready queue.
+      ready_q_.push(event.handle_info);
     }
 
     auto end_time = time();
-    // Some scheduled task can be run when epoll_wait() blocks.
-    while (!schedule_.empty()) {
-      auto&& [when, handle_info] = schedule_[0];
+    // Some scheduled task can wake up when epoll_wait() blocks.
+    while (!schedule_pq_.empty()) {
+      auto&& [when, handle_info] = schedule_pq_[0];
       if (when >= end_time) break;
-      ready_.push(handle_info);
+      ready_q_.push(handle_info);
       // pop_heap() with "greater{}" moves the smallest to the end. No pop.
-      std::ranges::pop_heap(schedule_, std::ranges::greater{},
+      std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
                             &TimerHandle::first);
-      schedule_.pop_back();
+      schedule_pq_.pop_back();
     }
 
-    for (size_t n_ready = ready_.size(), i = 0; i < n_ready; ++i) {
-      auto [handle_id, handle] = ready_.front();
-      ready_.pop();
-      if (auto iter = cancelled_.find(handle_id); iter != cancelled_.end()) {
-        // handle_id is a cancelled task. Don't cancel it?
-        cancelled_.erase(iter);
+    for (size_t i = 0, n_ready = ready_q_.size(); i < n_ready; ++i) {
+      auto [handle_id, handle_manager] = ready_q_.front();
+      ready_q_.pop();
+      if (auto iter = cancelled_set_.find(handle_id);
+          iter != cancelled_set_.end()) {
+        // If handle_id is a cancelled task. Don't run this task and remove it
+        // from cancelled task.
+        // TODO: why cancel here?
+        cancelled_set_.erase(iter);
       } else {
-        // When running, the state may be changed. So unschedule it first?
-        handle->set_state(Handle::State::UNSCHEDULED);
-        handle->run();
+        // TODO: When running, the state may be changed. So unschedule it first?
+        handle_manager->set_state(HandleIdAndState::State::UNSCHEDULED);
+        handle_manager->run();
       }
     }
 
-    cleanup_delayed_call();
-  }
-
-  void cleanup_delayed_call() {
-    // Remove delayed calls that were cancelled from head of queue.
-    while (!schedule_.empty()) {
-      auto&& [when, handle_info] = schedule_[0];
-      if (auto it = cancelled_.find(handle_info.id); it != cancelled_.end()) {
-        // If the first task in schedule queue has been in cancelled set,
-        // cancel it (remove it from schedule queue).
-        std::ranges::pop_heap(schedule_, std::ranges::greater{},
+    // If the first task in scheduled queue has been in cancelled set,
+    // cancel it (remove it from schedule queue).
+    while (!schedule_pq_.empty()) {
+      auto&& [_, handle_info] = schedule_pq_[0];
+      if (auto it = cancelled_set_.find(handle_info.id);
+          it != cancelled_set_.end()) {
+        std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
                               &TimerHandle::first);
-        schedule_.pop_back();
-        cancelled_.erase(it);
+        schedule_pq_.pop_back();
+        cancelled_set_.erase(it);
       } else {
         break;
       }
@@ -116,7 +118,7 @@ class EventLoop : private NonCopyable {
   }
 
   bool is_stop() {
-    return schedule_.empty() && ready_.empty() && selector_.is_stop();
+    return schedule_pq_.empty() && ready_q_.empty() && selector_.is_stop();
   }
 
   MSDuration time() {
@@ -126,21 +128,22 @@ class EventLoop : private NonCopyable {
   }
 
   template <typename Rep, typename Period>
-  void call_at(std::chrono::duration<Rep, Period> when, Handle& callback) {
+  void call_at(std::chrono::duration<Rep, Period> when,
+               HandleIdAndState& callback) {
     // push the task into schedule queue.
-    callback.set_state(Handle::State::SCHEDULED);
-    schedule_.emplace_back(std::chrono::duration_cast<MSDuration>(when),
-                           HandleInfo{callback.get_handle_id(), &callback});
-    std::ranges::push_heap(schedule_, std::ranges::greater{},
+    callback.set_state(HandleIdAndState::State::SCHEDULED);
+    schedule_pq_.emplace_back(std::chrono::duration_cast<MSDuration>(when),
+                              HandleInfo{callback.get_handle_id(), &callback});
+    std::ranges::push_heap(schedule_pq_, std::ranges::greater{},
                            &TimerHandle::first);
   }
 
  private:
   MSDuration start_time_{};
   Selector selector_;
-  std::queue<HandleInfo> ready_;
-  std::vector<TimerHandle> schedule_;  // priority_queue
-  std::unordered_set<HandleId> cancelled_;
+  std::queue<HandleInfo> ready_q_;
+  std::vector<TimerHandle> schedule_pq_;  // priority_queue
+  std::unordered_set<HandleId> cancelled_set_;
 };
 
 EventLoop& get_event_loop();

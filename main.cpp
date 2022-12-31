@@ -1,6 +1,18 @@
-#include <asyncio/event_loop.h>
+#include <asyncio/asyncio.h>
+
+// std
+#include <iostream>
+
+asyncio::Task<std::string> hello() {
+  co_await asyncio::dump_callstack();
+  co_return "hello";
+}
+
+asyncio::Task<std::string> hello_world() {
+  co_return (co_await hello() + " world");
+}
 
 int main() {
-  asyncio::get_event_loop();
+  std::cout << asyncio::run(hello_world()) << std::endl;
   return 0;
 }

@@ -12,11 +12,11 @@ namespace asyncio {
 
 using HandleId = uint64_t;
 
-class Handle {
+class HandleIdAndState {
  public:
-  enum class State : uint8_t { UNSCHEDULED, SUSPEND, SCHEDULED };
+  enum class State : uint8_t { UNSCHEDULED /* default */, SUSPEND, SCHEDULED };
 
-  Handle() noexcept : handle_id_(handle_id_generation_++) {}
+  HandleIdAndState() noexcept : handle_id_(handle_id_generation_++) {}
 
   virtual void run() = 0;
 
@@ -24,7 +24,7 @@ class Handle {
 
   HandleId get_handle_id() const { return handle_id_; }
 
-  virtual ~Handle() = default;
+  virtual ~HandleIdAndState() = default;
 
  private:
   HandleId handle_id_;
@@ -34,7 +34,7 @@ class Handle {
   State state_{State::UNSCHEDULED};
 };
 
-class CoroutineHandle : Handle {
+class CoHandleManager : public HandleIdAndState {
  public:
   std::string frame_name() const {
     const auto& frame_info = get_frame_info();
@@ -56,8 +56,9 @@ class CoroutineHandle : Handle {
 };
 
 struct HandleInfo {
+  // TODO: Why store id outside?
   HandleId id;
-  Handle* handle;
+  HandleIdAndState* handle;
 };
 
 }  // namespace asyncio
