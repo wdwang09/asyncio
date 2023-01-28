@@ -31,11 +31,10 @@ Task<bool> connect(int fd, const sockaddr* addr, socklen_t len) noexcept {
     throw std::system_error(
         std::make_error_code(static_cast<std::errc>(errno)));
   }
-  /// EPOLLOUT: The associated file is available for write(2) operations.
   /// https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
-  IoEvent ev{.fd = fd, .events = EPOLLOUT};
+  IoEvent epoll_out_ev{.fd = fd, .event_type = EPOLLOUT};
 
-  co_await get_event_loop().wait_io_event(ev);
+  co_await get_event_loop().wait_io_event(epoll_out_ev);
 
   int result = 0;
   socklen_t result_len = sizeof result;
@@ -85,7 +84,6 @@ Task<Stream> open_connection(std::string_view ip, uint16_t port) {
 
   int sock_fd = -1;
   for (auto p = server_info; p != nullptr; p = p->ai_next) {  // linklist
-    /// https://man7.org/linux/man-pages/man2/socket.2.html
     /// https://man7.org/linux/man-pages/man2/socket.2.html
     /// socket() creates an endpoint for communication and returns a file
     /// descriptor that refers to that endpoint.

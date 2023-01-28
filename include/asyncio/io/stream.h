@@ -56,7 +56,7 @@ struct Stream : NonCopyable {
     Buffer result(sz, 0);
     /// EPOLLIN: The associated file is available for read(2) operations.
     /// https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
-    IoEvent epoll_in_ev{.fd = fd_, .events = EPOLLIN};
+    IoEvent epoll_in_ev{.fd = fd_, .event_type = EPOLLIN};
     co_await get_event_loop().wait_io_event(epoll_in_ev);
     sz = ::read(fd_, result.data(), result.size());
     if (sz == -1) {
@@ -68,7 +68,7 @@ struct Stream : NonCopyable {
   }
 
   Task<> write(const Buffer& buf) {
-    IoEvent epoll_out_ev{.fd = fd_, .events = EPOLLOUT};
+    IoEvent epoll_out_ev{.fd = fd_, .event_type = EPOLLOUT};
     ssize_t total_write = 0;
     while (total_write < buf.size()) {
       co_await get_event_loop().wait_io_event(epoll_out_ev);
@@ -87,7 +87,7 @@ struct Stream : NonCopyable {
  private:
   Task<Buffer> read_until_eof() {
     Buffer result(kChunkSize, 0);
-    IoEvent epoll_in_ev{.fd = fd_, .events = EPOLLIN};
+    IoEvent epoll_in_ev{.fd = fd_, .event_type = EPOLLIN};
     ssize_t current_read = 0;
     int has_read = 0;
     do {

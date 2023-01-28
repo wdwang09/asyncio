@@ -82,9 +82,8 @@ class EventLoop : private NonCopyable {
 #endif
 
  private:
+  // deal with ready, scheduled and epoll task
   void run_once() {
-    // deal with ready, scheduled and epoll task
-
     std::optional<MSDuration> timeout;  // As the epoll_wait() argument.
     if (!ready_q_.empty()) {
       // If some task are ready

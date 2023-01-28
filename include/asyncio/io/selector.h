@@ -43,7 +43,7 @@ class Selector {
     ///   uint32_t     events;    /* Epoll events */
     ///   epoll_data_t data;      /* User data variable */
     /// };
-    std::vector<epoll_event> events(register_event_count_);
+    std::vector<epoll_event> epoll_events(register_event_count_);
 
     /// epoll_wait(2) waits for I/O events, blocking the calling thread if no
     /// events are currently available.  (This system call can be thought of as
@@ -62,12 +62,12 @@ class Selector {
     /// for the requested I/O, or zero if no file descriptor became ready during
     /// the requested timeout milliseconds.  On failure, epoll_wait() returns -1
     /// and errno is set to indicate the error.
-    int num_fd =
-        epoll_wait(epfd_, events.data(), register_event_count_, timeout_ms);
+    int num_fd = epoll_wait(epfd_, epoll_events.data(), register_event_count_,
+                            timeout_ms);
     std::vector<IoEvent> result;
     for (size_t i = 0; i < num_fd; ++i) {
-      result.emplace_back(IoEvent{
-          .handle_info = *reinterpret_cast<HandleInfo*>(events[i].data.ptr)});
+      result.emplace_back(IoEvent{.handle_info = *reinterpret_cast<HandleInfo*>(
+                                      epoll_events[i].data.ptr)});
     }
     return result;
   }
@@ -81,7 +81,7 @@ class Selector {
   bool is_stop() const { return register_event_count_ == 1; }
 
   void register_event(const IoEvent& event) {
-    epoll_event ev{.events = event.events,
+    epoll_event ev{.events = event.event_type,
                    .data{.ptr = const_cast<HandleInfo*>(&event.handle_info)}};
     /// Interest in particular file descriptors is then registered via
     /// epoll_ctl(2), which adds items to the interest list of the epoll
@@ -92,7 +92,7 @@ class Selector {
   }
 
   void remove_event(const IoEvent& event) {
-    epoll_event ev{.events = event.events};
+    epoll_event ev{.events = event.event_type};
     if (epoll_ctl(epfd_, EPOLL_CTL_DEL, event.fd, &ev) == 0) {
       --register_event_count_;
     }

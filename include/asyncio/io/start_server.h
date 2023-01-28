@@ -42,7 +42,7 @@ struct Server : NonCopyable {
   ~Server() { close(); }
 
   Task<void> serve_forever() {
-    IoEvent epoll_in_ev{.fd = fd_, .events = EPOLLIN};
+    IoEvent epoll_in_ev{.fd = fd_, .event_type = EPOLLIN};
     std::list<ScheduledTask<Task<>>> connected;
     while (true) {
       co_await get_event_loop().wait_io_event(epoll_in_ev);

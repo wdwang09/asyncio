@@ -6,7 +6,7 @@ namespace asyncio {
 
 struct IoEvent {
   int fd;
-  uint32_t events;
+  uint32_t event_type;
   HandleInfo handle_info;
 };
 
