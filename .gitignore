@@ -1,6 +1,7 @@
+del
 tmp
 
-build
+build*
 cmake-build*
 
 .idea

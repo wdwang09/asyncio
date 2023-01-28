@@ -1,6 +1,7 @@
 #pragma once
 
 #include <asyncio/handle.h>
+#include <asyncio/io/io_event.h>
 
 // std
 #include <cstdint>
@@ -12,12 +13,6 @@
 #include <unistd.h>
 
 namespace asyncio {
-
-struct Event {
-  int fd;
-  uint32_t events;
-  HandleInfo handle_info;
-};
 
 class Selector {
  public:
@@ -31,7 +26,10 @@ class Selector {
     }
   }
 
-  std::vector<Event> select(int timeout_ms) const {
+  std::vector<IoEvent> select(int timeout_ms) const {
+    /// https://man7.org/linux/man-pages/man3/errno.3.html
+    /// Set by system calls and some library functions in the event of an error
+    /// to indicate what went wrong.
     errno = 0;
 
     /// typedef union epoll_data {
@@ -66,9 +64,9 @@ class Selector {
     /// and errno is set to indicate the error.
     int num_fd =
         epoll_wait(epfd_, events.data(), register_event_count_, timeout_ms);
-    std::vector<Event> result;
+    std::vector<IoEvent> result;
     for (size_t i = 0; i < num_fd; ++i) {
-      result.emplace_back(Event{
+      result.emplace_back(IoEvent{
           .handle_info = *reinterpret_cast<HandleInfo*>(events[i].data.ptr)});
     }
     return result;
@@ -82,7 +80,7 @@ class Selector {
 
   bool is_stop() const { return register_event_count_ == 1; }
 
-  void register_event(const Event& event) {
+  void register_event(const IoEvent& event) {
     epoll_event ev{.events = event.events,
                    .data{.ptr = const_cast<HandleInfo*>(&event.handle_info)}};
     /// Interest in particular file descriptors is then registered via
@@ -93,7 +91,7 @@ class Selector {
     }
   }
 
-  void remove_event(const Event& event) {
+  void remove_event(const IoEvent& event) {
     epoll_event ev{.events = event.events};
     if (epoll_ctl(epfd_, EPOLL_CTL_DEL, event.fd, &ev) == 0) {
       --register_event_count_;

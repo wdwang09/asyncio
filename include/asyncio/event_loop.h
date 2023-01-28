@@ -4,12 +4,13 @@
 #include <asyncio/utils/non_copyable.h>
 
 #ifndef NO_IO
-#include <asyncio/selector.h>
+#include <asyncio/io/selector.h>
 #endif
 
 // std
 #include <algorithm>
 #include <chrono>
+#include <coroutine>
 #include <optional>
 #include <queue>
 #include <ranges>
@@ -51,6 +52,34 @@ class EventLoop : private NonCopyable {
       run_once();
     }
   }
+
+#ifndef NO_IO
+
+  struct WaitEventAwaiter {
+    constexpr bool await_ready() const noexcept { return false; }
+
+    template <typename Promise>
+    constexpr void await_suspend(
+        std::coroutine_handle<Promise> handle) noexcept {
+      handle.promise().set_state(HandleIdAndState::State::SUSPEND);
+      event_.handle_info = {.id = handle.promise().get_handle_id(),
+                            .handle = &handle.promise()};
+      selector_.register_event(event_);
+    }
+
+    void await_resume() noexcept {}
+
+    ~WaitEventAwaiter() { selector_.remove_event(event_); }
+
+    Selector& selector_;
+    IoEvent event_;
+  };
+
+  [[nodiscard]] auto wait_io_event(const IoEvent& event) {
+    return WaitEventAwaiter{selector_, event};
+  }
+
+#endif
 
  private:
   void run_once() {

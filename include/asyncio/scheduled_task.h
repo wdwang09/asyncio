@@ -8,7 +8,7 @@
 
 namespace asyncio {
 
-// TODO: Why not use Task directly? Show less code?
+// Hide details for coroutines in struct Task.
 template <concepts::Future Task>
 struct ScheduledTask : private NonCopyable {
   // template <concepts::Future Fut>  // Compilation Error in Clang 15.0.6

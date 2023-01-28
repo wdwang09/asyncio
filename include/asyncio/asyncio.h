@@ -8,6 +8,12 @@
 #include <asyncio/utils/future.h>
 #include <asyncio/wait_for.h>
 
+#ifndef NO_IO
+#include <asyncio/io/open_connection.h>
+#include <asyncio/io/start_server.h>
+#include <asyncio/io/stream.h>
+#endif
+
 // std
 #include <type_traits>
 
