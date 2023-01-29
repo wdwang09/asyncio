@@ -290,6 +290,99 @@ SCENARIO("test timeout") {
   }
 }
 
+SCENARIO("test gather") {
+  bool is_called = false;
+  auto factorial = [&](std::string_view name, int number) -> Task<int> {
+    int r = 1;
+    for (int i = 2; i <= number; ++i) {
+      fmt::print("Task {}: Compute factorial({}), currently i={}...\n", name,
+                 number, i);
+      co_await asyncio::sleep(0.1s);
+      r *= i;
+    }
+    fmt::print("Task {}: factorial({}) = {}\n", name, number, r);
+    co_return r;
+  };
+  auto test_void_func = []() -> Task<> {
+    fmt::print("this is a void value\n");
+    co_return;
+  };
+
+  SECTION("test lvalue & rvalue gather") {
+    REQUIRE(!is_called);
+    asyncio::run([&]() -> Task<> {
+      auto fac_lvalue = factorial("A", 2);
+      auto fac_xvalue = factorial("B", 3);
+      auto&& fac_rvalue = factorial("C", 4);
+      {
+        auto&& [a, b, c, _void] = co_await asyncio::gather(
+            fac_lvalue, static_cast<Task<int>&&>(fac_xvalue),
+            std::move(fac_rvalue), test_void_func());
+        REQUIRE(a == 2);
+        REQUIRE(b == 6);
+        REQUIRE(c == 24);
+      }
+      REQUIRE((co_await fac_lvalue) == 2);
+      REQUIRE(!fac_xvalue.valid());  // be moved
+      REQUIRE(!fac_rvalue.valid());  // be moved
+      is_called = true;
+    }());
+    REQUIRE(is_called);
+  }
+
+  SECTION("test gather of gather") {
+    REQUIRE(!is_called);
+    asyncio::run([&]() -> Task<> {
+      auto&& [ab, c, _void] =
+          co_await asyncio::gather(gather(factorial("A", 2), factorial("B", 3)),
+                                   factorial("C", 4), test_void_func());
+      auto&& [a, b] = ab;
+      REQUIRE(a == 2);
+      REQUIRE(b == 6);
+      REQUIRE(c == 24);
+      is_called = true;
+    }());
+    REQUIRE(is_called);
+  }
+
+  SECTION("test detach gather") {
+    REQUIRE(!is_called);
+    auto res = asyncio::gather(factorial("A", 2), factorial("B", 3));
+    asyncio::run([&]() -> Task<> {
+      auto&& [a, b] = co_await std::move(res);
+      REQUIRE(a == 2);
+      REQUIRE(b == 6);
+      is_called = true;
+    }());
+    REQUIRE(is_called);
+  }
+
+  SECTION("test exception gather") {
+    REQUIRE(!is_called);
+    REQUIRE_THROWS_AS(asyncio::run([&]() -> Task<std::tuple<double, int>> {
+                        is_called = true;
+                        co_return co_await asyncio::gather(int_div(4, 0),
+                                                           factorial("B", 3));
+                      }()),
+                      std::overflow_error);
+    REQUIRE(is_called);
+  }
+
+  SECTION("wait_for with gather") {
+    REQUIRE(!is_called);
+    asyncio::run([&]() -> Task<> {
+      REQUIRE_NOTHROW(co_await wait_for(
+          gather(sleep(10ms), sleep(20ms), sleep(30ms)), 50ms));
+      REQUIRE_THROWS_AS(
+          co_await wait_for(gather(sleep(10ms), sleep(80ms), sleep(30ms)),
+                            50ms),
+          TimeoutError);
+      is_called = true;
+    }());
+    REQUIRE(is_called);
+  }
+}
+
 #ifndef NO_IO
 
 SCENARIO("echo server & client") {

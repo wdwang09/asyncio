@@ -4,6 +4,8 @@
 #include <asyncio/exception.h>
 #include <asyncio/handle.h>
 #include <asyncio/result.h>
+// include "scheduled_task.h" before "task.h" to avoid some problem
+#include <asyncio/scheduled_task.h>
 #include <asyncio/utils/future.h>
 #include <asyncio/utils/non_copyable.h>
 #include <asyncio/utils/promise.h>
@@ -20,7 +22,8 @@
 namespace asyncio {
 
 struct NoWaitAtInitialSuspend {};
-// inline constexpr NoWaitAtInitialSuspend no_wait_at_initial_suspend;
+inline constexpr NoWaitAtInitialSuspend
+    no_wait_at_initial_suspend;  // use in "gather.h"
 
 template <typename R = void>
 struct Task : private NonCopyable {

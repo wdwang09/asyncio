@@ -9,10 +9,9 @@
 namespace asyncio {
 
 // Hide details for coroutines in struct Task.
-template <concepts::Future Task>
+template <concepts::Future TaskT>
 struct ScheduledTask : private NonCopyable {
-  // template <concepts::Future Fut>  // Compilation Error in Clang 15.0.6
-  explicit ScheduledTask(Task&& task) : task_(std::forward<Task>(task)) {
+  explicit ScheduledTask(TaskT&& task) : task_(std::forward<TaskT>(task)) {
     // In member initializer list, save task_ to avoid the lifecycle problem.
     if (task_.valid() && !task_.done()) {
       // from UNSCHEDULED to SCHEDULED, send into ready queue
@@ -38,7 +37,7 @@ struct ScheduledTask : private NonCopyable {
   bool done() const { return task_.done(); }
 
  private:
-  Task task_;
+  TaskT task_;
 };
 
 template <concepts::Future Fut>

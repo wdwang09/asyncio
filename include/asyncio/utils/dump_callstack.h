@@ -8,6 +8,7 @@ namespace asyncio {
 namespace detail {
 
 struct CallStackAwaiter {
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
   constexpr bool await_ready() noexcept { return false; }
 
   constexpr void await_resume() const noexcept {}

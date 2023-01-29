@@ -1,6 +1,7 @@
 #pragma once
 
 #include <asyncio/event_loop.h>
+#include <asyncio/gather.h>
 #include <asyncio/scheduled_task.h>
 #include <asyncio/sleep.h>
 #include <asyncio/task.h>

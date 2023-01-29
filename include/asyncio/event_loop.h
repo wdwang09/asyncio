@@ -62,6 +62,7 @@ class EventLoop : private NonCopyable {
 #ifndef NO_IO
 
   struct WaitEventAwaiter {
+    // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
     constexpr bool await_ready() const noexcept { return false; }
 
     template <typename Promise>
