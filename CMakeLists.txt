@@ -23,8 +23,14 @@ target_include_directories(asyncio PUBLIC include)
 target_link_libraries(asyncio PUBLIC fmt::fmt)
 
 if (NOT WITH_IO)
-    MESSAGE(WARNING "IO is disabled.")
+    message(WARNING "IO is disabled.")
     target_compile_definitions(asyncio PUBLIC NO_IO)
 endif ()
 
 add_subdirectory(src_main)
+
+option(WITH_CATCH2 "With Catch2 Test." ON)
+if (WITH_CATCH2)
+    add_subdirectory(third_party/Catch2)
+    add_subdirectory(src_main/catch2)
+endif ()

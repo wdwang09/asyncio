@@ -1,0 +1,4 @@
+add_executable(catch2_result_test result_test.cpp counted.h)
+target_link_libraries(catch2_result_test PUBLIC asyncio Catch2WithMain)
+add_executable(catch2_task_test task_test.cpp)
+target_link_libraries(catch2_task_test PUBLIC asyncio Catch2WithMain)

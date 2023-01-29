@@ -20,7 +20,7 @@ namespace asyncio {
 
 namespace detail {
 
-Task<bool> connect(int fd, const sockaddr* addr, socklen_t len) noexcept {
+Task<bool> connect(int fd, const sockaddr* addr, socklen_t len) {
   /// https://man7.org/linux/man-pages/man2/connect.2.html
   /// connect - initiate a connection on a socket
   int rc = ::connect(fd, addr, len);

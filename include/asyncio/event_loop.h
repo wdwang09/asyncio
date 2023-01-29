@@ -30,6 +30,12 @@ class EventLoop : private NonCopyable {
         std::chrono::duration_cast<MSDuration>(now.time_since_epoch());
   }
 
+  MSDuration time() {
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<MSDuration>(now.time_since_epoch()) -
+           start_time_;
+  }
+
   // Don't cancel handle immediately.
   void cancel_handle(HandleIdAndState& handle) {
     handle.set_state(HandleIdAndState::State::UNSCHEDULED);
@@ -159,12 +165,6 @@ class EventLoop : private NonCopyable {
     is_selector_empty = selector_.is_stop();
 #endif
     return schedule_pq_.empty() && ready_q_.empty() && is_selector_empty;
-  }
-
-  MSDuration time() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<MSDuration>(now.time_since_epoch()) -
-           start_time_;
   }
 
   template <typename Rep, typename Period>
