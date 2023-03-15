@@ -45,7 +45,7 @@ struct Task : private NonCopyable {
     return std::move(std_h_.promise()).result();
   }
 
-  // ===== operator co_await =====
+  // ===== operator co_await begin =====
 
   struct AwaiterBase {
     std_co_handle sub_coroutine_{};
@@ -61,18 +61,25 @@ struct Task : private NonCopyable {
       return true;
     }
 
+    // await_resume() is defined in derived class.
+
     // await_ready is false (B isn't done)
     template <typename Promise>
     void await_suspend(std::coroutine_handle<Promise> parent) const noexcept {
-      assert(!sub_coroutine_.promise().parent_co_manager_ptr_);
+      // CoHandleManager* parent_co_manager_ptr_;
+      assert(!sub_coroutine_.promise().parent_co_manager_ptr_);  // nullptr
+      // suspend parent
       parent.promise().set_state(HandleIdAndState::State::SUSPEND);
+      // record parent
       sub_coroutine_.promise().parent_co_manager_ptr_ = &(parent.promise());
+      // send B into ready queue
       sub_coroutine_.promise().schedule();  // SCHEDULED and into ready queue
     }
   };
 
   auto operator co_await() const& noexcept {
     struct Awaiter : AwaiterBase {
+      // co_await's return value
       decltype(auto) await_resume() const {
         if (!AwaiterBase::sub_coroutine_) [[unlikely]] {
           throw InvalidFuture{};
@@ -99,11 +106,7 @@ struct Task : private NonCopyable {
 
   // ===== operator co_await end =====
 
-  bool valid() const {
-    // TODO
-    // https://en.cppreference.com/w/cpp/coroutine/coroutine_handle/operator_bool
-    return std_h_ != nullptr;
-  }
+  bool valid() const { return bool(std_h_); }
 
   bool done() const { return std_h_.done(); }
 
@@ -111,7 +114,7 @@ struct Task : private NonCopyable {
   void destroy() {
     if (auto std_h = std::exchange(std_h_, nullptr)) {
       // after std::exchange, std_h_'s frame pointer will be nullptr
-      std_h.promise().cancel();
+      std_h.promise().set_cancelled();
       std_h.destroy();
     }
   }
@@ -122,8 +125,14 @@ struct Task : private NonCopyable {
 
 template <typename R>
 struct Task<R>::promise_type : CoHandleManager, Result<R> {
+  // CoHandleManager inherit HandleIdAndState;
+  // Result has two type:
+  // Result<R> (return_value) and Result<void> (return_void)
+
   promise_type() = default;
 
+  // Read function's args, use NoWaitAtInitialSuspend to
+  // determine initial_suspend()'s return value.
   template <typename... Args>  // from free function
   explicit promise_type(NoWaitAtInitialSuspend, Args&&...)
       : wait_at_initial_suspend_{false} {}
@@ -138,10 +147,13 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
   auto initial_suspend() noexcept {
     struct InitialSuspendAwaiter {
       constexpr bool await_ready() const noexcept {
+        // if wait == True: suspend (default value)
+        // if wait == False: resume (in wait_for, sleep, which need time)
         return !wait_at_initial_suspend_;
       }
       constexpr void await_suspend(std::coroutine_handle<>) const noexcept {}
       constexpr void await_resume() const noexcept {}
+
       const bool wait_at_initial_suspend_;
     };
     // If true (default), await_suspend(), don't resume coroutine when created.
@@ -151,20 +163,29 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
 
   struct FinalAwaiter {
     constexpr bool await_ready() const noexcept { return false; }
+
     // Because of template (which should have parent_co_manager_ptr_), cannot
     // write the struct in final_suspend().
+
+    // Don't return coroutine_handle here because tasks are controlled by event
+    // loop.
     template <typename Promise>
     constexpr void await_suspend(
         std::coroutine_handle<Promise> h) const noexcept {
+      // h is itself rather than parent (because B co_await final_suspend())
       if (CoHandleManager* parent = h.promise().parent_co_manager_ptr_) {
-        // continue to run parent coroutine when sub_coroutine is finished
-        get_event_loop().call_soon(*parent);
+        // send parent into ready queue
+        get_event_loop().set_handle_will_be_called_soon(*parent);
       }
     }
     constexpr void await_resume() const noexcept {}
   };
 
   auto final_suspend() noexcept { return FinalAwaiter{}; }
+
+  // unhandled_exception() is in Result: If the coroutine ends with an uncaught
+  // exception, it catches the exception and calls promise.unhandled_exception()
+  // from within the catch-block
 
   // Using this function to save std::source_location. No other usage.
   // GCC (12.2.1) and Clang (15.0.6) show different behaviors in "loc".

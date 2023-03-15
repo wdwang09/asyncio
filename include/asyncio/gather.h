@@ -68,7 +68,7 @@ class GatherAwaiter : NonCopyable {
       result_ = std::current_exception();
     }
     if (is_finished()) {
-      get_event_loop().call_soon(*continuation_);
+      get_event_loop().set_handle_will_be_called_soon(*continuation_);
     }
   }
 

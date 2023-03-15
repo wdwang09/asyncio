@@ -31,7 +31,7 @@ struct WaitForAwaiter : NonCopyable {
     return std::move(result_).result();
   }
 
-  // result_ has no value
+  // result_ doesn't have value
   template <typename Promise>
   void await_suspend(std::coroutine_handle<Promise> parent) noexcept {
     parent_co_manager_ptr_ = &(parent.promise());
@@ -52,10 +52,10 @@ struct WaitForAwaiter : NonCopyable {
       result_.unhandled_exception();
     }
     // If done, cancel the timeout event.
-    get_event_loop().cancel_handle(timeout_handle_);
+    get_event_loop().set_handle_cancelled(timeout_handle_);
     // If done, continue parent coroutine
     if (parent_co_manager_ptr_) {
-      get_event_loop().call_soon(*parent_co_manager_ptr_);
+      get_event_loop().set_handle_will_be_called_soon(*parent_co_manager_ptr_);
     }
   }
 
@@ -78,7 +78,8 @@ struct WaitForAwaiter : NonCopyable {
           std::make_exception_ptr(TimeoutError{}));
 
       // If timeout, continue parent coroutine
-      get_event_loop().call_soon(*(awaiter_ptr_->parent_co_manager_ptr_));
+      get_event_loop().set_handle_will_be_called_soon(
+          *(awaiter_ptr_->parent_co_manager_ptr_));
     }
 
     WaitForAwaiter* awaiter_ptr_;

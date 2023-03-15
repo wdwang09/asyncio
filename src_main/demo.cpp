@@ -23,17 +23,18 @@ asyncio::Task<void> tick(int& count) {
   }
 }
 
-asyncio::Task<void> wait_for_test() {
+asyncio::Task<void> wait_for_test(decltype(1ms) timeout) {
   int count = 0;
   try {
-    co_await asyncio::wait_for(tick(count), 200ms);
+    co_await asyncio::wait_for(tick(count), timeout);
   } catch (asyncio::TimeoutError&) {
     std::cout << "TimeoutError, count: " << count << std::endl;
   }
 }
 
 int main() {
-  asyncio::run(wait_for_test());
+  asyncio::run(wait_for_test(10ms));
+  asyncio::run(wait_for_test(200ms));
   std::cout << "Sleeping..." << std::endl;
   asyncio::run(asyncio::sleep(500ms));
   std::cout << "Wake up!" << std::endl;

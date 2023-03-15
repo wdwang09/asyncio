@@ -66,8 +66,17 @@ class Selector {
                             timeout_ms);
     std::vector<IoEvent> result;
     for (size_t i = 0; i < num_fd; ++i) {
+      // struct HandleInfo {
+      //   HandleId id;
+      //   HandleIdAndState* handle;
+      // };
+      // struct IoEvent {
+      //    int fd;
+      //    uint32_t event_type;
+      //    HandleInfo handle_info;
+      //  };
       result.emplace_back(IoEvent{.handle_info = *reinterpret_cast<HandleInfo*>(
-                                      epoll_events[i].data.ptr)});
+                                      epoll_events[i].data.ptr /* void* */)});
     }
     return result;
   }
@@ -81,8 +90,9 @@ class Selector {
   bool is_stop() const { return register_event_count_ == 1; }
 
   void register_event(const IoEvent& event) {
+    // https://en.cppreference.com/w/cpp/language/const_cast
     epoll_event ev{.events = event.event_type,
-                   .data{.ptr = const_cast<HandleInfo*>(&event.handle_info)}};
+                   .data{.ptr = const_cast<HandleInfo*>(&(event.handle_info))}};
     /// Interest in particular file descriptors is then registered via
     /// epoll_ctl(2), which adds items to the interest list of the epoll
     /// instance.

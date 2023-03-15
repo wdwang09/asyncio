@@ -324,7 +324,7 @@ SCENARIO("test gather") {
       }
       REQUIRE((co_await fac_lvalue) == 2);
       REQUIRE(!fac_xvalue.valid());  // be moved
-      REQUIRE(!fac_rvalue.valid());  // be moved
+      REQUIRE(!fac_rvalue.valid());  // NOLINT(bugprone-use-after-move)
       is_called = true;
     }());
     REQUIRE(is_called);

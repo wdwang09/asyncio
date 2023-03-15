@@ -12,9 +12,11 @@ namespace asyncio {
 template <concepts::Future TaskT>
 struct ScheduledTask : private NonCopyable {
   explicit ScheduledTask(TaskT&& task) : task_(std::forward<TaskT>(task)) {
-    // In member initializer list, save task_ to avoid the lifecycle problem.
-    if (task_.valid() && !task_.done()) {
-      // from UNSCHEDULED to SCHEDULED, send into ready queue
+    // Save task in task_ to avoid a temporary Task (in args) being destructed.
+
+    if (task_.valid() && !task_.done()) {  // standard coroutine is valid
+      // In CoHandleManager::schedule(), because Task::promise_type inherit it.
+      // from UNSCHEDULED to SCHEDULED, send into ready queue. (Don't run it.)
       task_.std_h_.promise().schedule();
     }
   }

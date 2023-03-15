@@ -40,6 +40,7 @@ template <typename Rep, typename Period>
 [[nodiscard("should use co_await")]] Task<> sleep(
     std::chrono::duration<Rep, Period> delay) {
   // Delay parent task.
+  // Why wrapping in detail: Run sleep immediately with NoWaitAtInitialSuspend.
   return detail::sleep({}, delay);
 }
 

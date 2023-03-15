@@ -20,7 +20,7 @@ namespace asyncio {
 
 class EventLoop : private NonCopyable {
   using MSDuration = std::chrono::milliseconds;
-  using TimerHandle = std::pair<MSDuration, HandleInfo>;
+  using PairTimerHandle = std::pair<MSDuration, HandleInfo>;
 
  public:
   EventLoop() {
@@ -37,12 +37,13 @@ class EventLoop : private NonCopyable {
   }
 
   // Don't cancel handle immediately.
-  void cancel_handle(HandleIdAndState& handle) {
+  // When a task will be run, if this task is in cancel set, ignore this task.
+  void set_handle_cancelled(HandleIdAndState& handle) {
     handle.set_state(HandleIdAndState::State::UNSCHEDULED);
     cancelled_set_.insert(handle.get_handle_id());
   }
 
-  void call_soon(HandleIdAndState& handle) {
+  void set_handle_will_be_called_soon(HandleIdAndState& handle) {
     handle.set_state(HandleIdAndState::State::SCHEDULED);
     ready_q_.push(HandleInfo{handle.get_handle_id(), &handle});
   }
@@ -111,7 +112,7 @@ class EventLoop : private NonCopyable {
       ready_q_.push(handle_info);
       // pop_heap() with "greater{}" moves the smallest to the end. No pop.
       std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
-                            &TimerHandle::first);
+                            &PairTimerHandle::first);
       schedule_pq_.pop_back();
     }
 
@@ -124,7 +125,7 @@ class EventLoop : private NonCopyable {
         // from cancelled task.
         cancelled_set_.erase(iter);
       } else {
-        // TODO: When running, the state may be changed. So unschedule it first?
+        // When running, the state may be changed. So unschedule it first.
         handle_manager->set_state(HandleIdAndState::State::UNSCHEDULED);
         handle_manager->run();
       }
@@ -137,7 +138,7 @@ class EventLoop : private NonCopyable {
       if (auto it = cancelled_set_.find(handle_info.id);
           it != cancelled_set_.end()) {
         std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
-                              &TimerHandle::first);
+                              &PairTimerHandle::first);
         schedule_pq_.pop_back();
         cancelled_set_.erase(it);
       } else {
@@ -148,6 +149,7 @@ class EventLoop : private NonCopyable {
 
   void check_io_ready(std::optional<MSDuration> timeout) {
 #ifndef NO_IO
+    // epoll_wait()
     // Wait for some selector event with specified timeout.
     // If no ready or scheduled task, wait infinitely until one event is
     // delivered. If timeout is 0, epoll_wait() with return immediately.
@@ -176,13 +178,18 @@ class EventLoop : private NonCopyable {
     schedule_pq_.emplace_back(std::chrono::duration_cast<MSDuration>(when),
                               HandleInfo{callback.get_handle_id(), &callback});
     std::ranges::push_heap(schedule_pq_, std::ranges::greater{},
-                           &TimerHandle::first);
+                           &PairTimerHandle::first);
   }
 
  private:
   MSDuration start_time_{};
+  // struct HandleInfo {
+  //    HandleId id;
+  //    HandleIdAndState* handle;
+  //  };
   std::queue<HandleInfo> ready_q_;
-  std::vector<TimerHandle> schedule_pq_;  // priority_queue
+  // using PairTimerHandle = std::pair<MSDuration, HandleInfo>;
+  std::vector<PairTimerHandle> schedule_pq_;  // priority_queue
   std::unordered_set<HandleId> cancelled_set_;
 #ifndef NO_IO
   Selector selector_;

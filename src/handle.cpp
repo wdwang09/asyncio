@@ -12,13 +12,13 @@ HandleId HandleIdAndState::handle_id_generation_ = 0;
 
 void CoHandleManager::schedule() {
   if (state_ == HandleIdAndState::State::UNSCHEDULED) {
-    get_event_loop().call_soon(*this);
+    get_event_loop().set_handle_will_be_called_soon(*this);
   }
 }
 
-void CoHandleManager::cancel() {
+void CoHandleManager::set_cancelled() {
   if (state_ == HandleIdAndState::State::SCHEDULED) {
-    get_event_loop().cancel_handle(*this);
+    get_event_loop().set_handle_cancelled(*this);
   }
 }
 

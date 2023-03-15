@@ -45,7 +45,7 @@ class CoHandleManager : public HandleIdAndState {
   virtual void dump_backtrace(size_t depth) const {}
 
   void schedule();
-  void cancel();
+  void set_cancelled();
 
  private:
   virtual const std::source_location& get_frame_info() const {
