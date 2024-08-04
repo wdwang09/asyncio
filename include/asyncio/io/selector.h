@@ -64,7 +64,7 @@ class Selector {
     /// and errno is set to indicate the error.
     int num_fd = epoll_wait(epfd_, epoll_events.data(), register_event_count_,
                             timeout_ms);
-    std::vector<IoEvent> result;
+    std::vector<IoEvent> ready_io_events;
     for (size_t i = 0; i < num_fd; ++i) {
       // struct HandleInfo {
       //   HandleId id;
@@ -75,10 +75,11 @@ class Selector {
       //    uint32_t event_type;
       //    HandleInfo handle_info;
       //  };
-      result.emplace_back(IoEvent{.handle_info = *reinterpret_cast<HandleInfo*>(
-                                      epoll_events[i].data.ptr /* void* */)});
+      ready_io_events.emplace_back(
+          IoEvent{.handle_info = *reinterpret_cast<HandleInfo*>(
+                      epoll_events[i].data.ptr /* void* */)});
     }
-    return result;
+    return ready_io_events;
   }
 
   ~Selector() {

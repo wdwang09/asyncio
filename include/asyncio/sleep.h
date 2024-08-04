@@ -22,6 +22,7 @@ struct SleepAwaiter : private NonCopyable {
 
   template <typename Promise>
   void await_suspend(std::coroutine_handle<Promise> caller) const noexcept {
+    // push caller into schedule_pq_
     get_event_loop().call_later(delay_, caller.promise());
   }
 
@@ -30,7 +31,7 @@ struct SleepAwaiter : private NonCopyable {
 };
 
 template <typename Rep, typename Period>
-Task<> sleep(NoWaitAtInitialSuspend, std::chrono::duration<Rep, Period> delay) {
+Task<> sleep(ResumeAtInitialSuspend, std::chrono::duration<Rep, Period> delay) {
   co_await detail::SleepAwaiter{delay};
 }
 
@@ -40,8 +41,7 @@ template <typename Rep, typename Period>
 [[nodiscard("should use co_await")]] Task<> sleep(
     std::chrono::duration<Rep, Period> delay) {
   // Delay parent task.
-  // Why wrapping in detail: Run sleep immediately with NoWaitAtInitialSuspend.
-  return detail::sleep({}, delay);
+  return detail::sleep(ResumeAtInitialSuspend{}, delay);
 }
 
 }  // namespace asyncio

@@ -34,6 +34,8 @@ class HandleIdAndState {
   State state_{State::UNSCHEDULED};
 };
 
+// Save handle id and state. Can use CoHandleManager to schedule its handle into
+// eventloop. Or use it dump the coroutine stack.
 class CoHandleManager : public HandleIdAndState {
  public:
   std::string frame_name() const {

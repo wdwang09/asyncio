@@ -2,14 +2,11 @@
 
 Original author and repository: <https://github.com/netcan/asyncio>
 
-Test with OpenSUSE-Tumbleweed WSL:
+Refactor some code. Add some comments.
 
-* GCC 12.2.1
-* Clang 15.0.7
+Usage:
 
-Usage
-
-```
+```bash
 git submodule update --init
 cmake -B build
 cmake --build build -j

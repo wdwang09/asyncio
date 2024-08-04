@@ -11,7 +11,8 @@ asyncio::Task<std::string> hello() {
 }
 
 asyncio::Task<std::string> hello_world() {
-  co_return (co_await hello() + " world");
+  auto task_hello = hello();
+  co_return (co_await task_hello + " world");
 }
 
 asyncio::Task<void> tick(int& count) {
@@ -33,11 +34,11 @@ asyncio::Task<void> wait_for_test(decltype(1ms) timeout) {
 }
 
 int main() {
+  std::cout << asyncio::run(hello_world()) << std::endl;
   asyncio::run(wait_for_test(10ms));
   asyncio::run(wait_for_test(200ms));
   std::cout << "Sleeping..." << std::endl;
   asyncio::run(asyncio::sleep(500ms));
   std::cout << "Wake up!" << std::endl;
-  std::cout << asyncio::run(hello_world()) << std::endl;
   return 0;
 }

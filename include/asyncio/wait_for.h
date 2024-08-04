@@ -41,7 +41,7 @@ struct WaitForAwaiter : NonCopyable {
 
  private:
   template <concepts::Awaitable Fut>
-  Task<> wait_for_task(NoWaitAtInitialSuspend, Fut&& task) {
+  Task<> wait_for_task(ResumeAtInitialSuspend, Fut&& task) {
     try {
       if constexpr (std::is_void_v<R>) {
         co_await std::forward<Fut>(task);
@@ -107,11 +107,11 @@ struct WaitForAwaiterRegistry {
 };
 
 template <concepts::Awaitable Fut, typename Duration>
-WaitForAwaiterRegistry(Fut&&, Duration)
-    -> WaitForAwaiterRegistry<Fut, Duration>;
+WaitForAwaiterRegistry(Fut&&,
+                       Duration) -> WaitForAwaiterRegistry<Fut, Duration>;
 
 template <concepts::Awaitable Fut, typename Rep, typename Period>
-auto wait_for(NoWaitAtInitialSuspend, Fut&& task,
+auto wait_for(ResumeAtInitialSuspend, Fut&& task,
               std::chrono::duration<Rep, Period> timeout)
     -> Task<AwaitResult<Fut>> {
   co_return co_await WaitForAwaiterRegistry{std::forward<Fut>(task), timeout};
@@ -122,7 +122,8 @@ auto wait_for(NoWaitAtInitialSuspend, Fut&& task,
 template <concepts::Awaitable Fut, typename Rep, typename Period>
 [[nodiscard("should use co_await")]] Task<AwaitResult<Fut>> wait_for(
     Fut&& task, std::chrono::duration<Rep, Period> timeout) {
-  return detail::wait_for({}, std::forward<Fut>(task), timeout);
+  return detail::wait_for(ResumeAtInitialSuspend{}, std::forward<Fut>(task),
+                          timeout);
 }
 
 }  // namespace asyncio

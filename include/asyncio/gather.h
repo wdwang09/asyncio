@@ -52,10 +52,10 @@ class GatherAwaiter : NonCopyable {
   template <concepts::Awaitable... Futs, size_t... Is>
   explicit GatherAwaiter(std::index_sequence<Is...>, Futs&&... futs)
       : tasks_{std::make_tuple(collect_result<Is>(
-            no_wait_at_initial_suspend, std::forward<Futs>(futs))...)} {}
+            resume_at_initial_suspend, std::forward<Futs>(futs))...)} {}
 
   template <size_t Idx, concepts::Awaitable Fut>
-  Task<> collect_result(NoWaitAtInitialSuspend, Fut&& fut) {
+  Task<> collect_result(ResumeAtInitialSuspend, Fut&& fut) {
     try {
       auto& results = std::get<ResultTypes>(result_);
       if constexpr (std::is_void_v<AwaitResult<Fut>>) {
@@ -84,7 +84,7 @@ class GatherAwaiter : NonCopyable {
 };
 
 template <concepts::Awaitable... Futs>  // C++17 deduction guide
-GatherAwaiter(Futs&&...)->GatherAwaiter<AwaitResult<Futs>...>;
+GatherAwaiter(Futs&&...) -> GatherAwaiter<AwaitResult<Futs>...>;
 
 template <concepts::Awaitable... Futs>
 struct GatherAwaiterRepository {
@@ -109,11 +109,11 @@ struct GatherAwaiterRepository {
 
 template <
     concepts::Awaitable... Futs>  // need deduction guide to deduce future type
-GatherAwaiterRepository(Futs&&...)->GatherAwaiterRepository<Futs...>;
+GatherAwaiterRepository(Futs&&...) -> GatherAwaiterRepository<Futs...>;
 
 template <concepts::Awaitable... Futs>
-auto gather(NoWaitAtInitialSuspend,
-            Futs&&... futs)  // need NoWaitAtInitialSuspend to lift futures
+auto gather(ResumeAtInitialSuspend,
+            Futs&&... futs)  // need ResumeAtInitialSuspend to lift futures
                              // lifetime early
     -> Task<std::tuple<GetTypeIfVoid_t<
         AwaitResult<Futs>>...>> {  // lift awaitable
@@ -126,8 +126,7 @@ auto gather(NoWaitAtInitialSuspend,
 
 template <concepts::Awaitable... Futs>
 [[nodiscard("discard gather doesn't make sense")]] auto gather(Futs&&... futs) {
-  return detail::gather(no_wait_at_initial_suspend,
-                        std::forward<Futs>(futs)...);
+  return detail::gather(resume_at_initial_suspend, std::forward<Futs>(futs)...);
 }
 
 }  // namespace asyncio

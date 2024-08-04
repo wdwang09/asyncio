@@ -18,7 +18,7 @@
 
 namespace asyncio {
 
-class EventLoop : private NonCopyable {
+class EventLoop : private NonCopyable {  // global variable
   using MSDuration = std::chrono::milliseconds;
   using PairTimerHandle = std::pair<MSDuration, HandleInfo>;
 
@@ -26,6 +26,8 @@ class EventLoop : private NonCopyable {
   EventLoop() {
     auto now = std::chrono::steady_clock::now();
     // https://en.cppreference.com/w/cpp/chrono/time_point/time_since_epoch
+    // Returns a duration representing the amount of time between *this and the
+    // clock's epoch (Jan 1 00:00:00 1970).
     start_time_ =
         std::chrono::duration_cast<MSDuration>(now.time_since_epoch());
   }
@@ -90,32 +92,59 @@ class EventLoop : private NonCopyable {
 #endif
 
  private:
-  // deal with ready, scheduled and epoll task
+  // deal with ready, scheduled and epoll task:
   void run_once() {
-    std::optional<MSDuration> timeout;  // As the epoll_wait() argument.
+    // Use epoll_wait() to check if some IO tasks are ready.
+    check_io_event();
+    // Wake up scheduled tasks if time is up.
+    wake_up_scheduled_task_if_ready();
+    // Run tasks in ready queue. If it has been in cancelled set, don't run it.
+    run_ready_tasks();
+    // If the front of scheduled tasks is in cancelled set. Pop it and discard.
+    remove_cancelled_scheduled_tasks();
+  }
+
+  void check_io_event() {
+#ifndef NO_IO
+    // Use in epoll_wait(). std::nullopt means epoll_wait(timeout=-1).
+    std::optional<MSDuration> io_event_timeout;
     if (!ready_q_.empty()) {
-      // If some task are ready
-      timeout.emplace(0);
+      // If some task are ready, epoll_wait(timeout=0).
+      io_event_timeout.emplace(0);
     } else if (!schedule_pq_.empty()) {
       // No task is ready, but some task are slept.
-      auto&& [when, _] = schedule_pq_[0];
-      timeout = std::max(when - time(), MSDuration(0));
+      auto& when = schedule_pq_[0].first;
+      io_event_timeout = std::max(when - time(), MSDuration(0));
     }
 
-    check_io_ready(timeout);
+    // Wait for some selector event with specified timeout.
+    // If no ready or scheduled task, epoll_wait() infinitely until one event is
+    // delivered. If timeout is 0, epoll_wait() with return immediately.
+    auto event_list = selector_.select(
+        io_event_timeout.has_value() ? (int)io_event_timeout->count() : -1);
+    for (auto&& event : event_list) {
+      // send selector event into ready queue.
+      ready_q_.push(event.handle_info);
+    }
+#endif
+  }
 
+  void wake_up_scheduled_task_if_ready() {
     auto end_time = time();
     // Some scheduled task can wake up when epoll_wait() blocks.
     while (!schedule_pq_.empty()) {
       auto&& [when, handle_info] = schedule_pq_[0];
       if (when >= end_time) break;
+      // send into ready queue
       ready_q_.push(handle_info);
       // pop_heap() with "greater{}" moves the smallest to the end. No pop.
       std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
                             &PairTimerHandle::first);
       schedule_pq_.pop_back();
     }
+  }
 
+  void run_ready_tasks() {
     for (size_t i = 0, n_ready = ready_q_.size(); i < n_ready; ++i) {
       auto [handle_id, handle_manager] = ready_q_.front();
       ready_q_.pop();
@@ -130,11 +159,13 @@ class EventLoop : private NonCopyable {
         handle_manager->run();
       }
     }
+  }
 
+  void remove_cancelled_scheduled_tasks() {
     // If the first task in scheduled queue has been in cancelled set,
     // cancel it (remove it from schedule queue).
     while (!schedule_pq_.empty()) {
-      auto&& [_, handle_info] = schedule_pq_[0];
+      auto& handle_info = schedule_pq_[0].second;
       if (auto it = cancelled_set_.find(handle_info.id);
           it != cancelled_set_.end()) {
         std::ranges::pop_heap(schedule_pq_, std::ranges::greater{},
@@ -145,21 +176,6 @@ class EventLoop : private NonCopyable {
         break;
       }
     }
-  }
-
-  void check_io_ready(std::optional<MSDuration> timeout) {
-#ifndef NO_IO
-    // epoll_wait()
-    // Wait for some selector event with specified timeout.
-    // If no ready or scheduled task, wait infinitely until one event is
-    // delivered. If timeout is 0, epoll_wait() with return immediately.
-    auto event_list =
-        selector_.select(timeout.has_value() ? (int)timeout->count() : -1);
-    for (auto&& event : event_list) {
-      // send selector event into ready queue.
-      ready_q_.push(event.handle_info);
-    }
-#endif
   }
 
   bool is_stop() {

@@ -21,9 +21,9 @@
 
 namespace asyncio {
 
-struct NoWaitAtInitialSuspend {};
-inline constexpr NoWaitAtInitialSuspend
-    no_wait_at_initial_suspend;  // use in "gather.h"
+struct ResumeAtInitialSuspend {};
+inline constexpr ResumeAtInitialSuspend
+    resume_at_initial_suspend;  // use in "gather.h"
 
 template <typename R = void>
 struct Task : private NonCopyable {
@@ -47,16 +47,16 @@ struct Task : private NonCopyable {
 
   // ===== operator co_await begin =====
 
-  struct AwaiterBase {
-    std_co_handle sub_coroutine_{};
+  struct OperatorCoAwaitAwaiterBase {
+    std_co_handle sub_co_handle_{};
 
     // if return true, run await_resume()
     // if return false, suspend itself and run await_suspend()
     constexpr bool await_ready() {
-      // A co_await B: B is sub_coroutine_, A is await_suspend's arg
-      if (sub_coroutine_) [[likely]] {
+      // A co_await B: B is sub_co_handle_, A is await_suspend's arg
+      if (sub_co_handle_) [[likely]] {
         // If B isn't done, suspend B; else resume B.
-        return sub_coroutine_.done();
+        return sub_co_handle_.done();
       }
       return true;
     }
@@ -67,41 +67,41 @@ struct Task : private NonCopyable {
     template <typename Promise>
     void await_suspend(std::coroutine_handle<Promise> parent) const noexcept {
       // CoHandleManager* parent_co_manager_ptr_;
-      assert(!sub_coroutine_.promise().parent_co_manager_ptr_);  // nullptr
-      // suspend parent
+      assert(!sub_co_handle_.promise().parent_co_manager_ptr_);  // nullptr
+      // mark parent as suspended
       parent.promise().set_state(HandleIdAndState::State::SUSPEND);
-      // record parent
-      sub_coroutine_.promise().parent_co_manager_ptr_ = &(parent.promise());
+      // save parent info in this awaiter
+      sub_co_handle_.promise().parent_co_manager_ptr_ = &(parent.promise());
       // send B into ready queue
-      sub_coroutine_.promise().schedule();  // SCHEDULED and into ready queue
+      sub_co_handle_.promise().schedule();  // SCHEDULED and into ready queue
     }
   };
 
   auto operator co_await() const& noexcept {
-    struct Awaiter : AwaiterBase {
-      // co_await's return value
+    struct OperatorCoAwaitAwaiter : OperatorCoAwaitAwaiterBase {
       decltype(auto) await_resume() const {
-        if (!AwaiterBase::sub_coroutine_) [[unlikely]] {
+        if (!OperatorCoAwaitAwaiterBase::sub_co_handle_) [[unlikely]] {
           throw InvalidFuture{};
         }
-        return AwaiterBase::sub_coroutine_.promise().result();
+        return OperatorCoAwaitAwaiterBase::sub_co_handle_.promise().result();
       }
     };
 
-    return Awaiter{std_h_};
+    return OperatorCoAwaitAwaiter{std_h_};
   }
 
   auto operator co_await() const&& noexcept {
-    struct Awaiter : AwaiterBase {
+    struct OperatorCoAwaitAwaiter : OperatorCoAwaitAwaiterBase {
       decltype(auto) await_resume() const {
-        if (!AwaiterBase::sub_coroutine_) [[unlikely]] {
+        if (!OperatorCoAwaitAwaiterBase::sub_co_handle_) [[unlikely]] {
           throw InvalidFuture{};
         }
-        return std::move(AwaiterBase::sub_coroutine_.promise()).result();
+        return std::move(OperatorCoAwaitAwaiterBase::sub_co_handle_.promise())
+            .result();
       }
     };
 
-    return Awaiter{std_h_};
+    return OperatorCoAwaitAwaiter{std_h_};
   }
 
   // ===== operator co_await end =====
@@ -129,16 +129,17 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
   // Result has two type:
   // Result<R> (return_value) and Result<void> (return_void)
 
+  // no ResumeAtInitialSuspend, suspend_at_initial_suspend_ is true
   promise_type() = default;
 
-  // Read function's args, use NoWaitAtInitialSuspend to
+  // Read function's args, use ResumeAtInitialSuspend to
   // determine initial_suspend()'s return value.
   template <typename... Args>  // from free function
-  explicit promise_type(NoWaitAtInitialSuspend, Args&&...)
-      : wait_at_initial_suspend_{false} {}
+  explicit promise_type(ResumeAtInitialSuspend, Args&&...)
+      : suspend_at_initial_suspend_{false} {}
   template <typename Obj, typename... Args>  // from member function
-  promise_type(Obj&&, NoWaitAtInitialSuspend, Args&&...)
-      : wait_at_initial_suspend_{false} {}
+  promise_type(Obj&&, ResumeAtInitialSuspend, Args&&...)
+      : suspend_at_initial_suspend_{false} {}
 
   Task get_return_object() noexcept {
     return Task{std_co_handle::from_promise(*this)};
@@ -147,36 +148,36 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
   auto initial_suspend() noexcept {
     struct InitialSuspendAwaiter {
       constexpr bool await_ready() const noexcept {
-        // if wait == True: suspend (default value)
-        // if wait == False: resume (in wait_for, sleep, which need time)
-        return !wait_at_initial_suspend_;
+        // if suspend_at_initial_suspend_ == True: suspend (default value)
+        // if suspend_at_initial_suspend_ == False:
+        // resume (in wait_for, sleep... Run them immediately for scheduling.)
+        return !suspend_at_initial_suspend_;
       }
       constexpr void await_suspend(std::coroutine_handle<>) const noexcept {}
       constexpr void await_resume() const noexcept {}
 
-      const bool wait_at_initial_suspend_;
+      const bool suspend_at_initial_suspend_;
     };
     // If true (default), await_suspend(), don't resume coroutine when created.
     // If false, await_resume(), resume coroutine when created.
-    return InitialSuspendAwaiter{wait_at_initial_suspend_};
+    return InitialSuspendAwaiter{suspend_at_initial_suspend_};
   }
 
+  // Because of template (which should have parent_co_manager_ptr_), cannot
+  // write the struct in final_suspend().
   struct FinalAwaiter {
     constexpr bool await_ready() const noexcept { return false; }
 
-    // Because of template (which should have parent_co_manager_ptr_), cannot
-    // write the struct in final_suspend().
-
-    // Don't return coroutine_handle here because tasks are controlled by event
-    // loop.
     template <typename Promise>
     constexpr void await_suspend(
-        std::coroutine_handle<Promise> h) const noexcept {
-      // h is itself rather than parent (because B co_await final_suspend())
-      if (CoHandleManager* parent = h.promise().parent_co_manager_ptr_) {
+        std::coroutine_handle<Promise> h_final) const noexcept {
+      // h_final is itself rather than parent (because this is final_suspend())
+      if (CoHandleManager* parent = h_final.promise().parent_co_manager_ptr_) {
         // send parent into ready queue
         get_event_loop().set_handle_will_be_called_soon(*parent);
       }
+      // Don't return parent coroutine_handle here because tasks are controlled
+      // by event loop.
     }
     constexpr void await_resume() const noexcept {}
   };
@@ -212,7 +213,7 @@ struct Task<R>::promise_type : CoHandleManager, Result<R> {
     }
   }
 
-  const bool wait_at_initial_suspend_{true};
+  const bool suspend_at_initial_suspend_ = true;
   CoHandleManager* parent_co_manager_ptr_ = nullptr;
   std::source_location frame_info_{};
 };

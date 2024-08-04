@@ -10,6 +10,7 @@
 
 namespace asyncio {
 
+// save return value or exception
 template <typename T>
 struct Result {
   constexpr bool has_value() const noexcept {
